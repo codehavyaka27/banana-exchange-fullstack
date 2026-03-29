@@ -26,13 +26,17 @@ const getLogo = (name) => {
     return <Activity className="w-8 h-8 text-banana-400" />;
 };
 
-// --- TRADINGVIEW CANDLESTICK CHART (WITH OHLC AGGREGATOR) ---
+// --- UPGRADED TRADINGVIEW CHART (WITH MICRO-TICK INTERPOLATION) ---
 const TradingViewChart = ({ currentPrice }) => {
     const chartContainerRef = useRef();
     const chartRef = useRef();
     const seriesRef = useRef();
-    const [currentCandle, setCurrentCandle] = useState(null);
 
+    // We store the "real" server price, and a "fake" visual price
+    const [targetPrice, setTargetPrice] = useState(currentPrice);
+    const [visualPrice, setVisualPrice] = useState(currentPrice);
+
+    // 1. Initialize the Chart
     useEffect(() => {
         if (!chartContainerRef.current) return;
         const chart = createChart(chartContainerRef.current, {
@@ -57,24 +61,45 @@ const TradingViewChart = ({ currentPrice }) => {
         return () => { window.removeEventListener('resize', handleResize); chart.remove(); };
     }, []);
 
+    // 2. Anchor to the Real Server Price when it arrives
     useEffect(() => {
-        if (!currentPrice || !seriesRef.current) return;
-        const now = Math.floor(Date.now() / 1000);
-        const candleTime = Math.floor(now / 5) * 5;
-        const tvTime = candleTime;
-
-        setCurrentCandle(prev => {
-            if (!prev || prev.time !== tvTime) {
-                const newCandle = { time: tvTime, open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice };
-                seriesRef.current.update(newCandle);
-                return newCandle;
-            } else {
-                const updatedCandle = { ...prev, high: Math.max(prev.high, currentPrice), low: Math.min(prev.low, currentPrice), close: currentPrice };
-                seriesRef.current.update(updatedCandle);
-                return updatedCandle;
-            }
-        });
+        if (currentPrice) {
+            setTargetPrice(currentPrice);
+            if (!visualPrice) setVisualPrice(currentPrice);
+        }
     }, [currentPrice]);
+
+    // 3. THE MAGIC: High-Frequency Micro-Ticks (Runs 4 times a second)
+    useEffect(() => {
+        if (!visualPrice || !seriesRef.current) return;
+
+        const interval = setInterval(() => {
+            const now = Math.floor(Date.now() / 1000);
+            const tvTime = Math.floor(now / 2) * 2; // Paint a new candle every 2 seconds
+
+            // Generate a tiny random fluctuation (max 0.15% movement)
+            const volatility = visualPrice * 0.0015;
+            const randomNoise = (Math.random() - 0.5) * volatility;
+
+            // Gently pull the fake price toward the REAL server price
+            const pullToTarget = (targetPrice - visualPrice) * 0.2;
+
+            const newTick = visualPrice + randomNoise + pullToTarget;
+            setVisualPrice(newTick);
+
+            // Update the chart with the new jittery tick
+            seriesRef.current.update({
+                time: tvTime,
+                open: visualPrice,
+                high: Math.max(visualPrice, newTick),
+                low: Math.min(visualPrice, newTick),
+                close: newTick
+            });
+
+        }, 250); // <-- Fires every 250 milliseconds!
+
+        return () => clearInterval(interval);
+    }, [visualPrice, targetPrice]);
 
     return (
         <div className="w-full h-[350px] relative overflow-hidden rounded-xl bg-slate-900 border border-slate-700 shadow-inner">
