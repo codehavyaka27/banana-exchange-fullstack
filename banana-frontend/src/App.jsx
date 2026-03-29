@@ -204,7 +204,8 @@ function App() {
         e.preventDefault(); setAuthError(''); setIsLoading(true);
         const endpoint = isLogin ? '/api/users/login' : '/api/users/register';
         try {
-            const response = await fetch(`https://banana-backend1.onrender.com/${endpoint}?username=${username}&password=${password}`, { method: 'POST' });
+            // FIX: Removed the slash after .com so it doesn't double up with the endpoint!
+            const response = await fetch(`https://banana-backend1.onrender.com${endpoint}?username=${username}&password=${password}`, { method: 'POST' });
             if (!response.ok) throw new Error(await response.text() || 'Authentication failed.');
             if (isLogin) {
                 const data = await response.json();
