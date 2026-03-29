@@ -35,7 +35,7 @@ public class MarketBotService {
         this.liquidityPoolRepository = liquidityPoolRepository;
     }
 
-    @Scheduled(fixedRate = 1000)
+    @Scheduled(fixedRate = 4000)
     public void simulateMarketActivity(){
 
         User admin = userRepository.findByusername("SystemAdmin").orElse(null);
