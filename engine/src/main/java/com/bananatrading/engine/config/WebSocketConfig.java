@@ -20,7 +20,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws-market")
-                .setAllowedOrigins("http://localhost:5173") // EXPLICITLY ALLOW YOUR REACT APP
+                .setAllowedOrigins("http://localhost:5173","https://banana-ui.vercel.app") // EXPLICITLY ALLOW YOUR REACT APP
                 .withSockJS();
     }
 }
