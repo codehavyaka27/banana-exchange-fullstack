@@ -117,14 +117,14 @@ function App() {
         const userId = getUserIdFromToken(token);
         if (!userId) return handleLogout();
         try {
-            const res = await fetch(`http://localhost:8080/api/users/${userId}/portfolio`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const res = await fetch(`https://banana-backend1.onrender.com/api/users/${userId}/portfolio`, { headers: { 'Authorization': `Bearer ${token}` }});
             if (res.ok) setPortfolio(await res.json());
         } catch (err) { console.error("Portfolio Sync Error"); }
     };
 
     const fetchMarketData = async () => {
         try {
-            const res = await fetch(`http://localhost:8080/api/cards/market`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const res = await fetch(`https://banana-backend1.onrender.com/api/cards/market`, { headers: { 'Authorization': `Bearer ${token}` }});
             if (res.ok) {
                 const rawData = await res.json();
                 setMarketItems(rawData.map(parseAsset));
@@ -135,7 +135,7 @@ function App() {
     const fetchOrderHistory = async () => {
         const userId = getUserIdFromToken(token);
         try {
-            const res = await fetch(`http://localhost:8080/api/orders/user/${userId}`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const res = await fetch(`https://banana-backend1.onrender.com/api/orders/user/${userId}`, { headers: { 'Authorization': `Bearer ${token}` }});
             if (res.ok) setOrderHistory(await res.json());
         } catch (err) { console.error("Order History Sync Error"); }
     };
@@ -144,7 +144,7 @@ function App() {
     useEffect(() => {
         if (token && currentView === 'APP') {
             fetchPortfolioData(); fetchMarketData(); fetchOrderHistory();
-            const socket = new SockJS('http://localhost:8080/ws-market');
+            const socket = new SockJS('https://banana-backend1.onrender.com/ws-market');
             const stompClient = new Client({
                 webSocketFactory: () => socket,
                 reconnectDelay: 5000,
@@ -172,7 +172,7 @@ function App() {
         showNotification(`INITIALIZING IPO FOR ${mintName}...`, 'info');
         const userId = getUserIdFromToken(token);
         try {
-            const response = await fetch(`http://localhost:8080/api/cards/mint`, {
+            const response = await fetch(`https://banana-backend1.onrender.com/api/cards/mint`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, cardName: mintName, totalSupply: parseInt(mintSupply), initialCashSeed: parseFloat(mintSeed) })
@@ -189,7 +189,7 @@ function App() {
         const userId = getUserIdFromToken(token);
         showNotification(`PROCESSING ${action} ORDER...`, 'info');
         try {
-            const response = await fetch(`http://localhost:8080/api/orders/trade`, {
+            const response = await fetch(`https://banana-backend1.onrender.com/api/orders/trade`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, cardId: activeAsset.id, orderType: action, tradeAmount: parseFloat(tradeAmount) })
@@ -204,7 +204,7 @@ function App() {
         e.preventDefault(); setAuthError(''); setIsLoading(true);
         const endpoint = isLogin ? '/api/users/login' : '/api/users/register';
         try {
-            const response = await fetch(`http://localhost:8080${endpoint}?username=${username}&password=${password}`, { method: 'POST' });
+            const response = await fetch(`https://banana-backend1.onrender.com/${endpoint}?username=${username}&password=${password}`, { method: 'POST' });
             if (!response.ok) throw new Error(await response.text() || 'Authentication failed.');
             if (isLogin) {
                 const data = await response.json();
