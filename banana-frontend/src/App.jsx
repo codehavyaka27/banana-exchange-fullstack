@@ -112,19 +112,29 @@ function App() {
 
 
     const activeAsset = activeAssetId ? marketItems.find(item => item.id === activeAssetId) : null;
-
     const fetchPortfolioData = async () => {
         const userId = getUserIdFromToken(token);
         if (!userId) return handleLogout();
         try {
-            const res = await fetch(`https://banana-backend1.onrender.com/api/users/${userId}/portfolio`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const res = await fetch(`https://banana-backend1.onrender.com/api/users/${userId}/portfolio`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // THE FIX: If the backend says "Forbidden" or "Unauthorized", kill the session
+            if (res.status === 401 || res.status === 403) {
+                showNotification("Session expired. Please log in again.", "error");
+                return handleLogout();
+            }
             if (res.ok) setPortfolio(await res.json());
         } catch (err) { console.error("Portfolio Sync Error"); }
     };
 
     const fetchMarketData = async () => {
         try {
-            const res = await fetch(`https://banana-backend1.onrender.com/api/cards/market`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const res = await fetch(`https://banana-backend1.onrender.com/api/cards/market`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // THE FIX
+            if (res.status === 401 || res.status === 403) return handleLogout();
             if (res.ok) {
                 const rawData = await res.json();
                 setMarketItems(rawData.map(parseAsset));
@@ -134,8 +144,13 @@ function App() {
 
     const fetchOrderHistory = async () => {
         const userId = getUserIdFromToken(token);
+        if (!userId) return handleLogout();
         try {
-            const res = await fetch(`https://banana-backend1.onrender.com/api/orders/user/${userId}`, { headers: { 'Authorization': `Bearer ${token}` }});
+            const res = await fetch(`https://banana-backend1.onrender.com/api/orders/user/${userId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // THE FIX
+            if (res.status === 401 || res.status === 403) return handleLogout();
             if (res.ok) setOrderHistory(await res.json());
         } catch (err) { console.error("Order History Sync Error"); }
     };
