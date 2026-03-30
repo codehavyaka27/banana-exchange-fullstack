@@ -26,6 +26,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
+        // ==========================================
+        // THE FIX: Let CORS "scout" requests (OPTIONS) pass through untouched!
+        // ==========================================
+        if (request.getMethod().equals("OPTIONS")) {
+            filterChain.doFilter(request, response);
+            return; // Exit the filter immediately so it doesn't look for a token
+        }
+
         // 1. Look at the HTTP request and find the "Authorization" header
         String authHeader = request.getHeader("Authorization");
 

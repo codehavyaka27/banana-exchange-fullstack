@@ -1,10 +1,8 @@
 package com.bananatrading.engine.config;
 
 import com.bananatrading.engine.security.JwtAuthFilter;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -15,11 +13,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
-import java.util.List;
-import static org.springframework.security.config.Customizer.withDefaults;
+import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
@@ -39,11 +36,13 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(withDefaults())
+                // 1. Tell Spring to use the corsConfigurationSource bean below
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // explicitly permit all OPTIONS requests to pass through
+                        // 2. Allow all preflight OPTIONS requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // 3. Allow public endpoints
                         .requestMatchers("/api/users/register", "/api/users/login", "/ws-market/**").permitAll()
                         .anyRequest().authenticated()
                 )
@@ -53,24 +52,19 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // THE NUCLEAR OPTION: Force CORS Filter to the absolute front of the line
+    // THE VIP LIST
     @Bean
-    public FilterRegistrationBean<CorsFilter> customCorsFilter() {
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "https://banana-ui.vercel.app"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        // Allow all headers so the Authorization header doesn't get blocked
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        CorsConfiguration config = new CorsConfiguration();
-
-        config.setAllowCredentials(true);
-        // Both your local and live UI URLs
-        config.setAllowedOrigins(List.of("http://localhost:5173", "https://banana-ui.vercel.app"));
-        // Allow ALL headers and ALL methods (GET, POST, OPTIONS, etc.)
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowedMethods(List.of("*"));
-
-        source.registerCorsConfiguration("/**", config);
-
-        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
-        // STRICTLY BEFORE JWT FILTER
-        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        return bean;
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }
