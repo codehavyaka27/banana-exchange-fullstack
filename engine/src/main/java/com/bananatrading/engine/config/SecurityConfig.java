@@ -43,7 +43,7 @@ public class SecurityConfig {
                         // 2. Allow all preflight OPTIONS requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // 3. Allow public endpoints
-                        .requestMatchers("/api/users/register", "/api/users/login", "/ws-market/**").permitAll()
+                        .requestMatchers("/api/users/register", "/api/users/login", "/ws-market/**","/api/health").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
