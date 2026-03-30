@@ -157,23 +157,36 @@ function App() {
 
     // --- WEBSOCKET MATRIX CONNECTION ---
     useEffect(() => {
-        if (token && currentView === 'APP') {
-            fetchPortfolioData(); fetchMarketData(); fetchOrderHistory();
-            const socket = new SockJS('https://banana-backend1.onrender.com/ws-market');
-            const stompClient = new Client({
-                webSocketFactory: () => socket,
-                reconnectDelay: 5000,
-                onConnect: () => {
-                    stompClient.subscribe('/topic/market', (message) => {
-                        if (message.body === 'UPDATE') {
+        // Double check we actually belong in the app
+        if (!token || currentView !== 'APP') return;
+
+        fetchPortfolioData(); fetchMarketData(); fetchOrderHistory();
+
+        const socket = new SockJS('https://banana-backend1.onrender.com/ws-market');
+        const stompClient = new Client({
+            webSocketFactory: () => socket,
+            reconnectDelay: 5000,
+            onConnect: () => {
+                stompClient.subscribe('/topic/market', (message) => {
+                    if (message.body === 'UPDATE') {
+                        // THE FIX: Double check local storage. If we logged out, DO NOT FETCH.
+                        if (localStorage.getItem('token')) {
                             fetchMarketData(); fetchPortfolioData(); fetchOrderHistory();
                         }
-                    });
-                },
-            });
-            stompClient.activate();
-            return () => { if (stompClient.active) stompClient.deactivate(); };
-        }
+                    }
+                });
+            },
+        });
+
+        stompClient.activate();
+
+        return () => {
+            // THE FIX: Unconditionally kill the socket on cleanup.
+            // If it is connecting, it will abort. If it is active, it will disconnect.
+            stompClient.deactivate();
+        };
+
+        // (Ensure you do not put the fetch functions in this dependency array!)
     }, [token, currentView]);
 
     const showNotification = (text, type = 'success') => {
