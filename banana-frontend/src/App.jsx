@@ -229,20 +229,42 @@ function App() {
     };
 
     const handleAuthSubmit = async (e) => {
-        e.preventDefault(); setAuthError(''); setIsLoading(true);
+        e.preventDefault();
+        setAuthError('');
+        setIsLoading(true);
         const endpoint = isLogin ? '/api/users/login' : '/api/users/register';
+
         try {
-            // FIX: Removed the slash after .com so it doesn't double up with the endpoint!
-            const response = await fetch(`https://banana-backend1.onrender.com${endpoint}?username=${username}&password=${password}`, { method: 'POST' });
+            // THE FIX IS HERE: No more ?username in the URL. We use a JSON body.
+            const response = await fetch(`https://banana-backend1.onrender.com${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                })
+            });
+
             if (!response.ok) throw new Error(await response.text() || 'Authentication failed.');
+
             if (isLogin) {
                 const data = await response.json();
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('username', username);
                 setToken(data.token);
-                setCurrentView('APP'); // <-- DIRECT USER TO APP ON SUCCESS
-            } else { setIsLogin(true); setPassword(''); alert('Registration successful. Please log in.'); }
-        } catch (err) { setAuthError(err.message); } finally { setIsLoading(false); }
+                setCurrentView('APP');
+            } else {
+                setIsLogin(true);
+                setPassword('');
+                alert('Registration successful. Please log in.');
+            }
+        } catch (err) {
+            setAuthError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleLogout = () => {
