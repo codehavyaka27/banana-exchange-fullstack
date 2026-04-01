@@ -1,6 +1,6 @@
 package com.bananatrading.engine.controller;
 
-import com.bananatrading.engine.dto.UserProfileDTO; // <-- ADDED THIS IMPORT
+import com.bananatrading.engine.dto.UserProfileDTO;
 import com.bananatrading.engine.entity.User;
 import com.bananatrading.engine.repository.UserRepository;
 import com.bananatrading.engine.service.UserService;
@@ -22,25 +22,31 @@ public class UserController {
         this.userRepository=userRepository;
     }
 
+    // THE FIX: Changed @RequestParam to @RequestBody to accept the JSON payload
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestParam String username ,@RequestParam String password){
+    public ResponseEntity<?> registerUser(@RequestBody Map<String, String> credentials){
         try{
-            User savedUser=userService.registerNewPlayer(username,password);
+            String username = credentials.get("username");
+            String password = credentials.get("password");
+            User savedUser=userService.registerNewPlayer(username, password);
             return ResponseEntity.ok(savedUser);
         }catch(IllegalArgumentException e){
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
-    // THE NEW LOGIN DOOR
+
+    // THE FIX: Changed @RequestParam to @RequestBody to accept the JSON payload
     @PostMapping("/login")
-    public ResponseEntity<?> loginUser(@RequestParam String username, @RequestParam String password) {
+    public ResponseEntity<?> loginUser(@RequestBody Map<String, String> credentials) {
         try {
+            String username = credentials.get("username");
+            String password = credentials.get("password");
             String token = userService.loginPlayer(username, password);
 
-            //  return it as a clean JSON object
+            // return it as a clean JSON object
             return ResponseEntity.ok(Map.of("token", token));
         } catch (IllegalArgumentException e) {
-            // If the password is wrong,  kick them out with a 401 Unauthorized status
+            // If the password is wrong, kick them out with a 401 Unauthorized status
             return ResponseEntity.status(401).body(e.getMessage());
         }
     }
