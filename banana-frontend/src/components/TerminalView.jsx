@@ -18,10 +18,10 @@ const getUserIdFromToken = (token) => {
 };
 
 const parseAsset = (item) => {
-    const id = item.cardId || item.id;
-    const name = item.ticker || item.name;
-    const price = item.currentPrice !== undefined ? item.currentPrice : (item.price || 0);
-    return { id, name, price: Number(price), raw: item };
+    const id = Number(item.cardId || item.id);
+    const name = String(item.ticker || item.name);
+    const price = item.currentPrice !== undefined ? Number(item.currentPrice) : Number(item.price || 0);
+    return { id, name, price, raw: item };
 };
 
 const getLogo = (name) => {
@@ -160,7 +160,7 @@ export default function TerminalView({ token, onLogout }) {
     const [mintSupply, setMintSupply] = useState(1000);
     const [mintSeed, setMintSeed] = useState(50000);
 
-    const activeAsset = activeAssetId ? marketItems.find(item => item.id === activeAssetId) : null;
+    const activeAsset = activeAssetId ? marketItems.find(item => Number(item.id) === Number(activeAssetId)) : null;
     const displayUsername = localStorage.getItem('username') || 'TRADER';
 
     const showNotification = (text, type = 'success') => {
@@ -210,11 +210,10 @@ export default function TerminalView({ token, onLogout }) {
         } catch (err) { console.error("Order History Sync Error", err); }
     }, [token, onLogout]);
 
-    // --- WEBSOCKET CONNECTION (IN-MEMORY ZERO-REST BROADCAST) ---
+    // --- WEBSOCKET CONNECTION (PURE IN-MEMORY STREAM) ---
     useEffect(() => {
         if (!token) return;
 
-        // Fetch initial snapshot once on mount
         fetchPortfolioData();
         fetchMarketData();
         fetchOrderHistory();
@@ -223,23 +222,20 @@ export default function TerminalView({ token, onLogout }) {
             webSocketFactory: () => new SockJS(WS_BASE_URL),
             reconnectDelay: 5000,
             onConnect: () => {
+                console.log("✅ WebSocket Connected to Broker");
                 stompClient.subscribe('/topic/market', (message) => {
                     if (!message || !message.body) return;
 
-                    // 1. Handle legacy or trade trigger string
-                    if (message.body === 'UPDATE') {
-                        fetchMarketData();
-                        return;
-                    }
+                    // Safely ignore plain text triggers
+                    if (message.body === 'UPDATE') return;
 
-                    // 2. Handle live JSON price array from MarketBotService
                     try {
                         const payload = JSON.parse(message.body);
                         if (Array.isArray(payload)) {
                             setMarketItems(payload.map(parseAsset));
                         }
                     } catch (e) {
-                        console.error("Payload parse error:", e);
+                        // Silent skip for non-JSON frames
                     }
                 });
             },
