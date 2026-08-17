@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, ChevronRight, Activity, Wallet, Target, PlusCircle, X, ArrowLeft, Hexagon, Zap, Shield, TrendingUp, Briefcase, List as ListIcon, History } from 'lucide-react';
 import SockJS from 'sockjs-client';
@@ -34,9 +34,6 @@ const getLogo = (name) => {
 };
 
 // --- OPTIMIZED TRADINGVIEW CANDLESTICK CHART ---
-const TradingViewChart = memo(({ currentPrice }) => {
-    console.log("⚡ Chart Wrapper Rendered");
-
 const TradingViewChart = memo(({ currentPrice }) => {
     const chartContainerRef = useRef(null);
     const chartRef = useRef(null);
@@ -167,12 +164,16 @@ export default function TerminalView({ token, onLogout }) {
     const activeAsset = activeAssetId ? marketItems.find(item => item.id === activeAssetId) : null;
     const displayUsername = localStorage.getItem('username') || 'TRADER';
 
+    // Throttling references to stop REST storms
+    const lastFetchTimeRef = useRef(0);
+    const isFetchingRef = useRef(false);
+
     const showNotification = (text, type = 'success') => {
         setTradeMessage({ text, type });
         setTimeout(() => setTradeMessage(null), 4000);
     };
 
-    const fetchPortfolioData = async () => {
+    const fetchPortfolioData = useCallback(async () => {
         const userId = getUserIdFromToken(token);
         if (!userId) return;
 
@@ -186,9 +187,9 @@ export default function TerminalView({ token, onLogout }) {
             }
             if (res.ok) setPortfolio(await res.json());
         } catch (err) { console.error("Portfolio Sync Error", err); }
-    };
+    }, [token, onLogout]);
 
-    const fetchMarketData = async () => {
+    const fetchMarketData = useCallback(async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/api/cards/market`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -199,9 +200,9 @@ export default function TerminalView({ token, onLogout }) {
                 setMarketItems(rawData.map(parseAsset));
             }
         } catch (err) { console.error("Market Sync Error", err); }
-    };
+    }, [token, onLogout]);
 
-    const fetchOrderHistory = async () => {
+    const fetchOrderHistory = useCallback(async () => {
         const userId = getUserIdFromToken(token);
         if (!userId) return;
 
@@ -212,12 +213,33 @@ export default function TerminalView({ token, onLogout }) {
             if (res.status === 401 || res.status === 403) return onLogout();
             if (res.ok) setOrderHistory(await res.json());
         } catch (err) { console.error("Order History Sync Error", err); }
-    };
+    }, [token, onLogout]);
+
+    const syncAllDataThrottled = useCallback(async () => {
+        const now = Date.now();
+        if (isFetchingRef.current || now - lastFetchTimeRef.current < 1200) {
+            return;
+        }
+
+        isFetchingRef.current = true;
+        lastFetchTimeRef.current = now;
+
+        try {
+            await Promise.all([
+                fetchMarketData(),
+                fetchPortfolioData(),
+                fetchOrderHistory()
+            ]);
+        } finally {
+            isFetchingRef.current = false;
+        }
+    }, [fetchMarketData, fetchPortfolioData, fetchOrderHistory]);
 
     // --- WEBSOCKET MATRIX CONNECTION ---
     useEffect(() => {
         if (!token) return;
 
+        // Initial fetch on mount
         fetchPortfolioData();
         fetchMarketData();
         fetchOrderHistory();
@@ -229,9 +251,7 @@ export default function TerminalView({ token, onLogout }) {
             onConnect: () => {
                 stompClient.subscribe('/topic/market', (message) => {
                     if (message.body === 'UPDATE' && localStorage.getItem('token')) {
-                        fetchMarketData();
-                        fetchPortfolioData();
-                        fetchOrderHistory();
+                        syncAllDataThrottled();
                     }
                 });
             },
@@ -242,7 +262,7 @@ export default function TerminalView({ token, onLogout }) {
         return () => {
             stompClient.deactivate();
         };
-    }, [token]);
+    }, [token, fetchPortfolioData, fetchMarketData, fetchOrderHistory, syncAllDataThrottled]);
 
     const handleMint = async (e) => {
         e.preventDefault();
@@ -253,7 +273,7 @@ export default function TerminalView({ token, onLogout }) {
             const response = await fetch(`${API_BASE_URL}/api/cards/mint`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, cardName: mintName, totalSupply: parseInt(mintSupply), initialCashSeed: parseFloat(mintSeed) })
+                body: JSON.stringify({ userId, cardName: mintName, totalSupply: parseInt(mintSupply, 10), initialCashSeed: parseFloat(mintSeed) })
             });
             if (!response.ok) throw new Error(await response.text());
             showNotification(`SUCCESS: MINTED ${mintName}! Pool is live.`, 'success');
@@ -277,6 +297,7 @@ export default function TerminalView({ token, onLogout }) {
             if (!response.ok) throw new Error(await response.text());
             showNotification(`SUCCESS: ${action} order executed!`, 'success');
             setTradeAmount('');
+            syncAllDataThrottled();
         } catch (err) { showNotification(`REJECTED: ${err.message}`, 'error'); }
     };
 
