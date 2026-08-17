@@ -224,13 +224,22 @@ export default function TerminalView({ token, onLogout }) {
             reconnectDelay: 5000,
             onConnect: () => {
                 stompClient.subscribe('/topic/market', (message) => {
+                    if (!message || !message.body) return;
+
+                    // 1. Handle legacy or trade trigger string
+                    if (message.body === 'UPDATE') {
+                        fetchMarketData();
+                        return;
+                    }
+
+                    // 2. Handle live JSON price array from MarketBotService
                     try {
                         const payload = JSON.parse(message.body);
                         if (Array.isArray(payload)) {
                             setMarketItems(payload.map(parseAsset));
                         }
                     } catch (e) {
-                        console.error("Payload error", e);
+                        console.error("Payload parse error:", e);
                     }
                 });
             },
