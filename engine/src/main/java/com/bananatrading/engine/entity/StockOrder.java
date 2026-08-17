@@ -1,5 +1,6 @@
 package com.bananatrading.engine.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ public class StockOrder {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnore // Prevents Jackson serialization recursion and 502 proxy crashes
     private User user;
 
     @Column(nullable = false)
