@@ -28,7 +28,7 @@ public class UserController {
         try{
             String username = credentials.get("username");
             String password = credentials.get("password");
-            User savedUser=userService.registerNewPlayer(username, password);
+            String savedUser=userService.registerNewPlayer(username, password);
             return ResponseEntity.ok(savedUser);
         }catch(IllegalArgumentException e){
             return ResponseEntity.badRequest().body(e.getMessage());

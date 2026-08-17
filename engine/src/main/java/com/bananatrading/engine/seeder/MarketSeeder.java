@@ -23,7 +23,7 @@ public class MarketSeeder implements CommandLineRunner {
     }
 
     public void run(String...args){
-        if(userRepository.findByusername("SystemAdmin").isEmpty()){
+        if(userRepository.findByUsername("SystemAdmin").isEmpty()){
             System.out.println("market seeder intializing!");
 
             User admin=new User();

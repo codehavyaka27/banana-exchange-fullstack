@@ -2,13 +2,15 @@ package com.bananatrading.engine.service;
 
 import com.bananatrading.engine.dto.PortfolioItemDTO;
 import com.bananatrading.engine.dto.UserProfileDTO;
-import com.bananatrading.engine.entity.Card;
+
 import com.bananatrading.engine.entity.CardInventory;
 import com.bananatrading.engine.repository.CardInventoryRepository;
-import com.bananatrading.engine.repository.CardRepository;
+
 import com.bananatrading.engine.repository.UserRepository;
 import com.bananatrading.engine.entity.User;
 import com.bananatrading.engine.security.JwtUtil;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -20,21 +22,23 @@ import java.util.Optional;
 public class UserService {
     private final UserRepository userRepository;
     private final CardInventoryRepository cardInventoryRepository;
-    private final CardRepository cardRepository;
+
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    public UserService(UserRepository userRepository, CardRepository cardRepository, CardInventoryRepository cardInventoryRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil){
+    private static final BigDecimal INITIAL_WALLET_BALANCE = new BigDecimal("10000.00");
+
+    public UserService(UserRepository userRepository,  CardInventoryRepository cardInventoryRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil){
         this.userRepository = userRepository;
-        this.cardRepository = cardRepository;
+
         this.cardInventoryRepository = cardInventoryRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
+    @Transactional
+    public String registerNewPlayer(String username,String rawPassword){
 
-    public User registerNewPlayer(String username,String rawPassword){
-
-        Optional<User> existingUser = userRepository.findByusername(username);
+        Optional<User> existingUser = userRepository.findByUsername(username);
         if(existingUser.isPresent()){
             throw new IllegalArgumentException("username is already taken");
         }
@@ -43,33 +47,34 @@ public class UserService {
         User newUser = new User();
         newUser.setUsername(username);
         newUser.setPassword(passwordEncoder.encode(rawPassword));
-        newUser.setWalletBalance(new BigDecimal("10000.00"));
+        newUser.setWalletBalance(INITIAL_WALLET_BALANCE);
 
-        //telling repository to save in postgresql
-        return userRepository.save(newUser);
+        userRepository.save(newUser);
+
+        return newUser.getUsername();
     }
 
     public String loginPlayer(String username, String rawPassword) {
         // 1. Find the user
-        User user = userRepository.findByusername(username)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
         // 2. Check if the password matches the scrambled hash in the database
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
-            throw new IllegalArgumentException("Invalid username or password");
+            throw new BadCredentialsException("Invalid username or password");
         }
 
         // 3. Password is correct! Print and return the VIP wristband.
         return jwtUtil.generateToken(user.getUsername(), user.getId());
     }
-
+    @Transactional(readOnly = true)
     public UserProfileDTO getUserPortfolio(Long userId) {
         // 1. Get the User and their wallet balance
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         // 2. Get all the items in their backpack
-        List<CardInventory> inventory = cardInventoryRepository.findByUserId(userId);
+        List<CardInventory> inventory = cardInventoryRepository.findByUserIdWithCards(userId);
 
         // 3. Loop through the backpack and translate Card IDs into Ticker Names AND grab the Avg Price
         List<PortfolioItemDTO> portfolioItems = inventory.stream()

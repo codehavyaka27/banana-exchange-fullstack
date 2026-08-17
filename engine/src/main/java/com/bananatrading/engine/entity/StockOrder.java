@@ -1,17 +1,26 @@
 package com.bananatrading.engine.entity;
+
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="orders")
+@Table(
+        name = "orders",
+        indexes = {
+                // Fast index for order matching engine
+                @Index(name = "idx_orders_ticker_type", columnList = "ticker, orderType"),
+                // Fast index for user dashboard trade history
+                @Index(name = "idx_orders_user_time", columnList = "user_id, timestamp DESC")
+        }
+)
 public class StockOrder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name="user_id",nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Column(nullable = false)
@@ -26,14 +35,15 @@ public class StockOrder {
 
     @Column(nullable = false)
     private Integer quantity;
+
+    @Column(nullable = false)
     private LocalDateTime timestamp = LocalDateTime.now();
+
     private BigDecimal realizedPnl;
     private BigDecimal entryPrice;
 
-    public StockOrder(){
+    public StockOrder() {
     }
-
-
 
     public Long getId() {
         return id;
@@ -82,12 +92,28 @@ public class StockOrder {
     public void setQuantity(Integer quantity) {
         this.quantity = quantity;
     }
-    public LocalDateTime getTimestamp() { return timestamp; }
-    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
 
-    public BigDecimal getRealizedPnl() { return realizedPnl; }
-    public void setRealizedPnl(BigDecimal realizedPnl) { this.realizedPnl = realizedPnl; }
-    public BigDecimal getEntryPrice() { return entryPrice; }
-    public void setEntryPrice(BigDecimal entryPrice) { this.entryPrice = entryPrice; }
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
 
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public BigDecimal getRealizedPnl() {
+        return realizedPnl;
+    }
+
+    public void setRealizedPnl(BigDecimal realizedPnl) {
+        this.realizedPnl = realizedPnl;
+    }
+
+    public BigDecimal getEntryPrice() {
+        return entryPrice;
+    }
+
+    public void setEntryPrice(BigDecimal entryPrice) {
+        this.entryPrice = entryPrice;
+    }
 }

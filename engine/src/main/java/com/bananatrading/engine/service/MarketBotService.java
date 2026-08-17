@@ -11,7 +11,11 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 
 @Service
@@ -19,31 +23,25 @@ public class MarketBotService {
 
     private final CardRepository cardRepository;
     private final LiquidityPoolRepository liquidityPoolRepository;
-    private final SimpMessagingTemplate messagingTemplate; // <-- We inject the WebSocket blater directly!
+    private final SimpMessagingTemplate messagingTemplate;
     private final Random random = new Random();
 
-    // Ripped out OrderService, UserRepository, and InventoryRepository. The bot is now a Ghost.
-    public MarketBotService(CardRepository cardRepository, LiquidityPoolRepository liquidityPoolRepository, SimpMessagingTemplate messagingTemplate){
+    public MarketBotService(CardRepository cardRepository, LiquidityPoolRepository liquidityPoolRepository, SimpMessagingTemplate messagingTemplate) {
         this.cardRepository = cardRepository;
         this.liquidityPoolRepository = liquidityPoolRepository;
         this.messagingTemplate = messagingTemplate;
     }
 
-    // 🔥 HIGH FREQUENCY: Runs every 1.2 seconds now because it skips the heavy DB logic
     @Scheduled(fixedRate = 1200)
-    public void simulateMarketActivity(){
-
+    public void simulateMarketActivity() {
         List<Card> allCards = cardRepository.findAll();
-        if(allCards.isEmpty()) return;
+        if (allCards.isEmpty()) return;
 
         Card randomCard = allCards.get(random.nextInt(allCards.size()));
-
         LiquidityPool pool = liquidityPoolRepository.findByCardId(randomCard.getId()).orElse(null);
         if (pool == null) return;
 
-        // ==========================================
         // --- SINE WAVE MARKET CYCLES ---
-        // ==========================================
         double timeInMinutes = System.currentTimeMillis() / 60000.0;
         double marketCycle = Math.sin(timeInMinutes);
 
@@ -52,9 +50,7 @@ public class MarketBotService {
         OrderType orderType = (roll < sellProbability) ? OrderType.SELL : OrderType.BUY;
         boolean isWhaleDump = (roll > 90) && (marketCycle <= 0.2);
 
-        // ==========================================
         // --- PLUNGE PROTECTION ---
-        // ==========================================
         BigDecimal currentPrice = pool.getCashReserve().divide(pool.getCardReserve(), 4, RoundingMode.HALF_UP);
         BigDecimal priceFloor = BigDecimal.ZERO;
 
@@ -67,9 +63,7 @@ public class MarketBotService {
             isWhaleDump = false;
         }
 
-        // ==========================================
         // --- BASE TRADE SIZING ---
-        // ==========================================
         int minTrade; int maxTrade;
         if (randomCard.getName().equalsIgnoreCase("Tiko")) { minTrade = 1000; maxTrade = 15000; }
         else if (randomCard.getName().equalsIgnoreCase("ABM")) { minTrade = 100; maxTrade = 2000; }
@@ -88,32 +82,46 @@ public class MarketBotService {
         if (amount.compareTo(maxAllowed) > 0) amount = maxAllowed.setScale(0, RoundingMode.HALF_UP);
         if (amount.compareTo(BigDecimal.ONE) < 0) amount = BigDecimal.ONE;
 
-        // ==========================================
-        // --- IN-MEMORY AMM MATH (ZERO DB OVERHEAD) ---
-        // ==========================================
+        // --- IN-MEMORY AMM MATH ---
         try {
             if (orderType == OrderType.BUY) {
-                // Bot spends Cash, removes Card from pool
                 BigDecimal newCash = pool.getCashReserve().add(amount);
                 BigDecimal newCard = pool.getkValue().divide(newCash, 4, RoundingMode.HALF_UP);
                 pool.setCashReserve(newCash);
                 pool.setCardReserve(newCard);
             } else {
-                // Bot dumps Card, removes Cash from pool
                 BigDecimal newCard = pool.getCardReserve().add(amount);
                 BigDecimal newCash = pool.getkValue().divide(newCard, 4, RoundingMode.HALF_UP);
                 pool.setCardReserve(newCard);
                 pool.setCashReserve(newCash);
             }
 
-            // 1. Save only the pool state (Super fast)
+            // 1. Save updated pool
             liquidityPoolRepository.save(pool);
 
-            // 2. Blast the WebSocket to React instantly
-            messagingTemplate.convertAndSend("/topic/market", "UPDATE");
+            // 2. Build live market data payload
+            List<Map<String, Object>> liveMarket = new ArrayList<>();
+            List<LiquidityPool> allPools = liquidityPoolRepository.findAll();
 
-            String mood = (marketCycle > 0) ? "🐂 Bull" : "🐻 Bear";
-            System.out.println("⚡ GHOST BOT (" + mood + ") : " + orderType + " " + amount + " of " + randomCard.getName());
+            for (Card card : allCards) {
+                LiquidityPool p = allPools.stream()
+                        .filter(lp -> lp.getCard() != null && Objects.equals(lp.getCard().getId(), card.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                BigDecimal price = (p != null && p.getCardReserve().compareTo(BigDecimal.ZERO) > 0)
+                        ? p.getCashReserve().divide(p.getCardReserve(), 4, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("cardId", card.getId());
+                item.put("ticker", card.getName());
+                item.put("currentPrice", price);
+                liveMarket.add(item);
+            }
+
+            // 3. Blast JSON payload directly to React client
+            messagingTemplate.convertAndSend("/topic/market", liveMarket);
 
         } catch (Exception e) {
             System.err.println("❌ BOT FAIL: " + e.getMessage());
