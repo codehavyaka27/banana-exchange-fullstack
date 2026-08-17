@@ -18,9 +18,9 @@ const getUserIdFromToken = (token) => {
 };
 
 const parseAsset = (item) => {
-    const id = item.cardId;
-    const name = item.ticker;
-    const price = item.currentPrice || 0;
+    const id = item.cardId || item.id;
+    const name = item.ticker || item.name;
+    const price = item.currentPrice !== undefined ? item.currentPrice : (item.price || 0);
     return { id, name, price: Number(price), raw: item };
 };
 
@@ -78,7 +78,6 @@ const TradingViewChart = memo(({ currentPrice }) => {
         chartRef.current = chart;
         seriesRef.current = candlestickSeries;
 
-        // Populate base seed candle if price exists on mount
         if (currentPrice) {
             const now = Math.floor(Date.now() / 1000);
             const initialTime = Math.floor(now / 5) * 5;
@@ -110,7 +109,7 @@ const TradingViewChart = memo(({ currentPrice }) => {
         };
     }, []);
 
-    // 2. Direct Series Mutation (Zero React Virtual DOM Re-renders)
+    // 2. Direct Series Mutation
     useEffect(() => {
         if (!currentPrice || !seriesRef.current) return;
 
@@ -164,10 +163,6 @@ export default function TerminalView({ token, onLogout }) {
     const activeAsset = activeAssetId ? marketItems.find(item => item.id === activeAssetId) : null;
     const displayUsername = localStorage.getItem('username') || 'TRADER';
 
-    // Throttling references to stop REST storms
-    const lastFetchTimeRef = useRef(0);
-    const isFetchingRef = useRef(false);
-
     const showNotification = (text, type = 'success') => {
         setTradeMessage({ text, type });
         setTimeout(() => setTradeMessage(null), 4000);
@@ -215,43 +210,31 @@ export default function TerminalView({ token, onLogout }) {
         } catch (err) { console.error("Order History Sync Error", err); }
     }, [token, onLogout]);
 
-    const syncAllDataThrottled = useCallback(async () => {
-        const now = Date.now();
-        if (isFetchingRef.current || now - lastFetchTimeRef.current < 1200) {
-            return;
-        }
-
-        isFetchingRef.current = true;
-        lastFetchTimeRef.current = now;
-
-        try {
-            await Promise.all([
-                fetchMarketData(),
-                fetchPortfolioData(),
-                fetchOrderHistory()
-            ]);
-        } finally {
-            isFetchingRef.current = false;
-        }
-    }, [fetchMarketData, fetchPortfolioData, fetchOrderHistory]);
-
-    // --- WEBSOCKET MATRIX CONNECTION ---
+    // --- WEBSOCKET CONNECTION (IN-MEMORY ZERO-REST BROADCAST) ---
     useEffect(() => {
         if (!token) return;
 
-        // Initial fetch on mount
+        // Fetch initial state once on mount
         fetchPortfolioData();
         fetchMarketData();
         fetchOrderHistory();
 
-        const socket = new SockJS(WS_BASE_URL);
         const stompClient = new Client({
-            webSocketFactory: () => socket,
+            webSocketFactory: () => new SockJS(WS_BASE_URL),
             reconnectDelay: 5000,
             onConnect: () => {
                 stompClient.subscribe('/topic/market', (message) => {
-                    if (message.body === 'UPDATE' && localStorage.getItem('token')) {
-                        syncAllDataThrottled();
+                    try {
+                        const payload = JSON.parse(message.body);
+                        if (Array.isArray(payload)) {
+                            // Instant in-memory state update with zero REST fetch calls
+                            setMarketItems(payload.map(parseAsset));
+                        }
+                    } catch (e) {
+                        // Fallback for legacy string broadcast if encountered
+                        if (message.body === 'UPDATE') {
+                            fetchMarketData();
+                        }
                     }
                 });
             },
@@ -262,7 +245,7 @@ export default function TerminalView({ token, onLogout }) {
         return () => {
             stompClient.deactivate();
         };
-    }, [token, fetchPortfolioData, fetchMarketData, fetchOrderHistory, syncAllDataThrottled]);
+    }, [token, fetchPortfolioData, fetchMarketData, fetchOrderHistory]);
 
     const handleMint = async (e) => {
         e.preventDefault();
@@ -297,7 +280,9 @@ export default function TerminalView({ token, onLogout }) {
             if (!response.ok) throw new Error(await response.text());
             showNotification(`SUCCESS: ${action} order executed!`, 'success');
             setTradeAmount('');
-            syncAllDataThrottled();
+            // Refresh user holdings and trade log right after execution
+            fetchPortfolioData();
+            fetchOrderHistory();
         } catch (err) { showNotification(`REJECTED: ${err.message}`, 'error'); }
     };
 
