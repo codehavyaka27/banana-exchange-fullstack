@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, ChevronRight, Activity, Wallet, Target, PlusCircle, X, ArrowLeft, Hexagon, Zap, Shield, TrendingUp, Briefcase, List as ListIcon, History } from 'lucide-react';
 import SockJS from 'sockjs-client';
@@ -10,9 +10,6 @@ import { API_BASE_URL, WS_BASE_URL } from '../config';
 const getUserIdFromToken = (token) => {
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log("🚨 JWT PAYLOAD DECODED:", payload); // Let's peek inside!
-
-        // Try to grab the ID, whether Spring Boot called it userId, id, or sub
         return payload.userId || payload.id || payload.sub;
     } catch (e) {
         console.error("Token Decode Error", e);
@@ -36,54 +33,114 @@ const getLogo = (name) => {
     return <Activity className="w-8 h-8 text-banana-400" />;
 };
 
-// --- TRADINGVIEW CANDLESTICK CHART ---
-const TradingViewChart = ({ currentPrice }) => {
-    const chartContainerRef = useRef();
-    const chartRef = useRef();
-    const seriesRef = useRef();
-    const [currentCandle, setCurrentCandle] = useState(null);
+// --- OPTIMIZED TRADINGVIEW CANDLESTICK CHART ---
+const TradingViewChart = memo(({ currentPrice }) => {
+    console.log("⚡ Chart Wrapper Rendered");
 
+const TradingViewChart = memo(({ currentPrice }) => {
+    const chartContainerRef = useRef(null);
+    const chartRef = useRef(null);
+    const seriesRef = useRef(null);
+    const currentCandleRef = useRef(null);
+
+    // 1. Initialize Chart Instance Once
     useEffect(() => {
         if (!chartContainerRef.current) return;
+
         const chart = createChart(chartContainerRef.current, {
             layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#94a3b8' },
-            grid: { vertLines: { color: 'rgba(51, 65, 85, 0.5)' }, horzLines: { color: 'rgba(51, 65, 85, 0.5)' } },
+            grid: {
+                vertLines: { color: 'rgba(51, 65, 85, 0.3)' },
+                horzLines: { color: 'rgba(51, 65, 85, 0.3)' }
+            },
             width: chartContainerRef.current.clientWidth,
             height: 350,
-            timeScale: { timeVisible: true, secondsVisible: true, borderVisible: false },
-            rightPriceScale: { borderVisible: false }
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: true,
+                borderVisible: false,
+            },
+            rightPriceScale: {
+                borderVisible: false,
+                autoScale: true
+            },
+            crosshair: {
+                vertLine: { color: 'rgba(148, 163, 184, 0.4)', width: 1, style: 3 },
+                horzLine: { color: 'rgba(148, 163, 184, 0.4)', width: 1, style: 3 },
+            }
         });
 
         const candlestickSeries = chart.addSeries(CandlestickSeries, {
-            upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444'
+            upColor: '#22c55e',
+            downColor: '#ef4444',
+            borderVisible: false,
+            wickUpColor: '#22c55e',
+            wickDownColor: '#ef4444'
         });
 
         chartRef.current = chart;
         seriesRef.current = candlestickSeries;
 
-        const handleResize = () => chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+        // Populate base seed candle if price exists on mount
+        if (currentPrice) {
+            const now = Math.floor(Date.now() / 1000);
+            const initialTime = Math.floor(now / 5) * 5;
+            const seedBar = {
+                time: initialTime,
+                open: currentPrice,
+                high: currentPrice,
+                low: currentPrice,
+                close: currentPrice
+            };
+            currentCandleRef.current = seedBar;
+            candlestickSeries.setData([seedBar]);
+        }
+
+        const handleResize = () => {
+            if (chartContainerRef.current && chartRef.current) {
+                chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+            }
+        };
+
         window.addEventListener('resize', handleResize);
 
-        return () => { window.removeEventListener('resize', handleResize); chart.remove(); };
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            chart.remove();
+            chartRef.current = null;
+            seriesRef.current = null;
+            currentCandleRef.current = null;
+        };
     }, []);
 
+    // 2. Direct Series Mutation (Zero React Virtual DOM Re-renders)
     useEffect(() => {
         if (!currentPrice || !seriesRef.current) return;
+
         const now = Math.floor(Date.now() / 1000);
         const candleTime = Math.floor(now / 5) * 5;
-        const tvTime = candleTime;
+        const prev = currentCandleRef.current;
 
-        setCurrentCandle(prev => {
-            if (!prev || prev.time !== tvTime) {
-                const newCandle = { time: tvTime, open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice };
-                seriesRef.current.update(newCandle);
-                return newCandle;
-            } else {
-                const updatedCandle = { ...prev, high: Math.max(prev.high, currentPrice), low: Math.min(prev.low, currentPrice), close: currentPrice };
-                seriesRef.current.update(updatedCandle);
-                return updatedCandle;
-            }
-        });
+        if (!prev || prev.time !== candleTime) {
+            const newCandle = {
+                time: candleTime,
+                open: prev ? prev.close : currentPrice,
+                high: currentPrice,
+                low: currentPrice,
+                close: currentPrice
+            };
+            currentCandleRef.current = newCandle;
+            seriesRef.current.update(newCandle);
+        } else {
+            const updatedCandle = {
+                ...prev,
+                high: Math.max(prev.high, currentPrice),
+                low: Math.min(prev.low, currentPrice),
+                close: currentPrice
+            };
+            currentCandleRef.current = updatedCandle;
+            seriesRef.current.update(updatedCandle);
+        }
     }, [currentPrice]);
 
     return (
@@ -91,7 +148,7 @@ const TradingViewChart = ({ currentPrice }) => {
             <div ref={chartContainerRef} className="absolute inset-0" />
         </div>
     );
-};
+});
 
 // --- MAIN TERMINAL VIEW ---
 export default function TerminalView({ token, onLogout }) {
@@ -117,13 +174,7 @@ export default function TerminalView({ token, onLogout }) {
 
     const fetchPortfolioData = async () => {
         const userId = getUserIdFromToken(token);
-
-        // 🚨 WE CHANGED THIS LINE:
-        // Instead of logging out, we just stop the fetch and print an error so we can debug.
-        if (!userId) {
-            console.error("No user ID found in token! Token payload needs checking.");
-            return;
-        }
+        if (!userId) return;
 
         try {
             const res = await fetch(`${API_BASE_URL}/api/users/${userId}/portfolio`, {
@@ -151,22 +202,17 @@ export default function TerminalView({ token, onLogout }) {
     };
 
     const fetchOrderHistory = async () => {
-            const userId = getUserIdFromToken(token);
+        const userId = getUserIdFromToken(token);
+        if (!userId) return;
 
-            // 🚨 CHANGE THIS LINE TOO:
-            if (!userId) {
-                console.error("Order History blocked: No user ID in token.");
-                return;
-            }
-
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/orders/user/${userId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.status === 401 || res.status === 403) return onLogout();
-                if (res.ok) setOrderHistory(await res.json());
-            } catch (err) { console.error("Order History Sync Error", err); }
-        };
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/orders/user/${userId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.status === 401 || res.status === 403) return onLogout();
+            if (res.ok) setOrderHistory(await res.json());
+        } catch (err) { console.error("Order History Sync Error", err); }
+    };
 
     // --- WEBSOCKET MATRIX CONNECTION ---
     useEffect(() => {
@@ -211,7 +257,9 @@ export default function TerminalView({ token, onLogout }) {
             });
             if (!response.ok) throw new Error(await response.text());
             showNotification(`SUCCESS: MINTED ${mintName}! Pool is live.`, 'success');
-            setMintName(''); fetchPortfolioData(); fetchMarketData();
+            setMintName('');
+            fetchPortfolioData();
+            fetchMarketData();
         } catch (err) { showNotification(`MINT ERROR: ${err.message}`, 'error'); }
     };
 
