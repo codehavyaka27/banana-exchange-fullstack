@@ -214,7 +214,7 @@ export default function TerminalView({ token, onLogout }) {
     useEffect(() => {
         if (!token) return;
 
-        // Fetch initial state once on mount
+        // Fetch initial snapshot once on mount
         fetchPortfolioData();
         fetchMarketData();
         fetchOrderHistory();
@@ -227,14 +227,10 @@ export default function TerminalView({ token, onLogout }) {
                     try {
                         const payload = JSON.parse(message.body);
                         if (Array.isArray(payload)) {
-                            // Instant in-memory state update with zero REST fetch calls
                             setMarketItems(payload.map(parseAsset));
                         }
                     } catch (e) {
-                        // Fallback for legacy string broadcast if encountered
-                        if (message.body === 'UPDATE') {
-                            fetchMarketData();
-                        }
+                        console.error("Payload error", e);
                     }
                 });
             },
@@ -245,7 +241,7 @@ export default function TerminalView({ token, onLogout }) {
         return () => {
             stompClient.deactivate();
         };
-    }, [token, fetchPortfolioData, fetchMarketData, fetchOrderHistory]);
+    }, [token]);
 
     const handleMint = async (e) => {
         e.preventDefault();
@@ -280,7 +276,6 @@ export default function TerminalView({ token, onLogout }) {
             if (!response.ok) throw new Error(await response.text());
             showNotification(`SUCCESS: ${action} order executed!`, 'success');
             setTradeAmount('');
-            // Refresh user holdings and trade log right after execution
             fetchPortfolioData();
             fetchOrderHistory();
         } catch (err) { showNotification(`REJECTED: ${err.message}`, 'error'); }
