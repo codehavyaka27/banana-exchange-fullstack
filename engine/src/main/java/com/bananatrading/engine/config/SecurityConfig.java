@@ -36,14 +36,20 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Tell Spring to use the corsConfigurationSource bean below
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // 2. Allow all preflight OPTIONS requests
+                        // 1. Allow all preflight OPTIONS requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // 3. Allow public endpoints
-                        .requestMatchers("/api/users/register", "/api/users/login", "/ws-market/**","/api/health").permitAll()
+                        // 2. Allow public endpoints, health checks, and WebSocket handshakes
+                        .requestMatchers(
+                                "/api/users/register",
+                                "/api/users/login",
+                                "/api/cards/market",
+                                "/api/health/**",
+                                "/ws-market/**",
+                                "/ws/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -52,14 +58,12 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // THE VIP LIST
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "https://banana-ui.vercel.app"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        // Allow all headers so the Authorization header doesn't get blocked
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
 
